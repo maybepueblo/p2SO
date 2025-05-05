@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wordle by Pablo and Marinela</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        .section {
+            margin-bottom: 20px;
+            padding: 20px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 1px 5px rgba(0, 0, 0, 0.05);
+            border: 1px solid #eee;
+        }
+        .hidden {
+            display: none;
+        }
+        .board {
+            display: grid;
+            gap: 8px;
+            margin: 20px auto;
+            justify-content: center;
+        }
+        .cell {
+            width: 60px;
+            height: 60px;
+            border: 2px solid #d3d6da;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 28px;
+            font-weight: bold;
+            text-transform: uppercase;
+            background: white;
+        }
+        .cell.correct {
+            background-color: #6aaa64;
+            color: white;
+            border-color: #6aaa64;
+        }
+        .cell.present {
+            background-color: #c9b458;
+            color: white;
+            border-color: #c9b458;
+        }
+        .cell.absent {
+            background-color: #787c7e;
+            color: white;
+            border-color: #787c7e;
+        }
+        .player {
+            margin: 10px 0;
+            padding: 12px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        .player.creator {
+            border-left-color: #2ecc71;
+        }
+        .player-name {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        .player-status {
+            font-size: 0.9em;
+            color: #7f8c8d;
+        }
+        .player-winner {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        button {
+            padding: 10px 15px;
+            background: #3498db;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            margin: 5px 0;
+            transition: background 0.2s;
+        }
+        button:hover {
+            background: #2980b9;
+        }
+        button:disabled {
+            background: #bdc3c7;
+            cursor: not-allowed;
+        }
+        button.success {
+            background: #2ecc71;
+        }
+        button.success:hover {
+            background: #27ae60;
+        }
+        button.danger {
+            background: #e74c3c;
+        }
+        button.danger:hover {
+            background: #c0392b;
+        }
+        input {
+            padding: 10px 15px;
+            font-size: 1em;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin: 5px 0;
+            width: 100%;
+            max-width: 300px;
+        }
+        input:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            background: #e8f4fc;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+        }
+        .status.playing {
+            background: #e8f8f0;
+            border-left-color: #2ecc71;
+        }
+        .status.finished {
+            background: #f5f5f5;
+            border-left-color: #95a5a6;
+        }
+        .typing-indicator {
+            font-style: italic;
+            color: #7f8c8d;
+            height: 20px;
+            margin: 5px 0;
+        }
+        .board-disabled {
+            opacity: 0.7;
+            position: relative;
+        }
+        .board-disabled::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.5);
+        }
+        .game-id {
+            font-family: monospace;
+            font-size: 1.2em;
+            background: #f8f9fa;
+            padding: 5px 10px;
+            border-radius: 4px;
+        }
+        .input-group {
+            margin: 15px 0;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        @media (max-width: 600px) {
+            .container {
+                padding: 15px;
+            }
+            .cell {
+                width: 50px;
+                height: 50px;
+                font-size: 24px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Wordle Battle Royale</h1>
+
+        <div id="lobby" class="section">
+            <h2>The Lounge</h2>
+
+            <div class="input-group">
+                <h3>Create New Game</h3>
+                <label for="createName">Your Name:</label>
+                <input type="text" id="createName" placeholder="Ex: Alice" maxlength="20">
+                <button class="success" onclick="createGame()">Create Game</button>
+            </div>
+
+            <div class="input-group">
+                <h3>Join Existing Game</h3>
+                <label for="joinName">Your Name:</label>
+                <input type="text" id="joinName" placeholder="Ex: Bob" maxlength="20">
+                <label for="gameId">Game ID:</label>
+                <input type="text" id="gameId" placeholder="Ex: 1234">
+                <button class="success" onclick="joinGame()">Join Game</button>
+            </div>
+        </div>
+
+        <div id="game" class="section hidden">
+            <h2>Game: <span class="game-id" id="gameIdDisplay"></span></h2>
+
+            <div id="gameStatus" class="status">Status: Waiting for players...</div>
+
+            <div id="typingIndicator" class="typing-indicator"></div>
+
+            <div id="board" class="board"></div>
+
+            <div id="gameControls">
+                <button id="startGameBtn" class="hidden success" onclick="startGame()">Start Game</button>
+
+                <div id="inputArea" class="input-group hidden">
+                    <label for="wordInput">Your word (<span id="wordLengthDisplay">5</span> letters):</label>
+                    <input type="text" id="wordInput" maxlength="5" placeholder="Type here">
+                    <button class="success" onclick="submitAttempt()">Submit</button>
+                </div>
+            </div>
+
+            <div id="playersSection">
+                <h3>Players:</h3>
+                <div id="playersList"></div>
+            </div>
+
+            <button class="danger" onclick="leaveGame()">Leave Game</button>
+        </div>
+    </div>
+
+    <script>
+        // Initial setup
+        const socket = io();
+        let currentGameId = null;
+        let wordLength = 5;
+        let isCreator = false;
+        let playerName = '';
+        let typingTimeout = null;
+
+        // DOM elements
+        const lobbySection = document.getElementById('lobby');
+        const gameSection = document.getElementById('game');
+        const gameIdDisplay = document.getElementById('gameIdDisplay');
+        const gameStatus = document.getElementById('gameStatus');
+        const boardElement = document.getElementById('board');
+        const wordInput = document.getElementById('wordInput');
+        const wordLengthDisplay = document.getElementById('wordLengthDisplay');
+        const startGameBtn = document.getElementById('startGameBtn');
+        const inputArea = document.getElementById('inputArea');
+        const playersList = document.getElementById('playersList');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const createNameInput = document.getElementById('createName');
+        const joinNameInput = document.getElementById('joinName');
+        const gameIdInput = document.getElementById('gameId');
+
+        // Connection events
+        socket.on('connect', () => {
+            console.log('Connected to server with ID:', socket.id);
+            createNameInput.focus();
+        });
+
+        socket.on('disconnect', () => {
+            alert('You have been disconnected from the server');
+        });
+
+        // Game events
+        socket.on('game_created', (data) => {
+            console.log('Game created data:', data);
+
+            if (!data.game_id) {
+                console.error('Error: No game_id received');
+                alert('Error creating game');
+                return;
+            }
+
+            currentGameId = data.game_id;
+            wordLength = data.word_length;
+            isCreator = data.is_creator;
+            playerName = data.player_name || createNameInput.value.trim();
+
+            updateWordLengthDisplay();
+            showGameScreen();
+            console.log('Game created successfully:', currentGameId);
+        });
+
+        socket.on('game_joined', (data) => {
+            currentGameId = data.game_id;
+            wordLength = data.word_length;
+            isCreator = data.is_creator;
+            playerName = data.player_name || joinNameInput.value.trim();
+
+            updateWordLengthDisplay();
+            showGameScreen();
+            console.log('Joined game:', currentGameId);
+        });
+
+        socket.on('game_started', (data) => {
+            wordLength = data.word_length;
+            updateWordLengthDisplay();
+
+            gameStatus.textContent = 'Status: Game in progress';
+            gameStatus.className = 'status playing';
+
+            startGameBtn.classList.add('hidden');
+            inputArea.classList.remove('hidden');
+
+            initializeBoard();
+            console.log('Game started');
+        });
+
+        socket.on('game_update', (data) => {
+            updateGameState(data);
+        });
+
+        socket.on('player_won', (data) => {
+            alert(`${data.player_name} has won the game!`);
+            gameStatus.textContent = `Status: ${data.player_name} won!`;
+            gameStatus.className = 'status finished';
+            inputArea.classList.add('hidden');
+        });
+
+        socket.on('game_ended', (data) => {
+            alert(`Game ended. The word was: ${data.word}`);
+            gameStatus.textContent = `Status: Game ended - Word: ${data.word}`;
+            gameStatus.className = 'status finished';
+            inputArea.classList.add('hidden');
+        });
+
+        socket.on('player_left', (data) => {
+            const playerElement = document.getElementById(`player-${data.player_id}`);
+            if (playerElement) {
+                playerElement.remove();
+            }
+            alert('A player has left the game');
+        });
+
+        socket.on('typing_update', (data) => {
+            if (data.typing_player && data.typing_player !== socket.id) {
+                typingIndicator.textContent = `${data.player_name} is typing...`;
+                boardElement.classList.add('board-disabled');
+                wordInput.disabled = true;
+            } else {
+                typingIndicator.textContent = '';
+                boardElement.classList.remove('board-disabled');
+                wordInput.disabled = false;
+            }
+        });
+
+        socket.on('error', (data) => {
+            alert(`Error: ${data.message}`);
+        });
+
+        // UI functions
+        function createGame() {
+            const name = createNameInput.value.trim();
+            if (name) {
+                console.log('Sending request to create game...');
+                const btn = document.querySelector('#lobby button.success');
+                btn.disabled = true;
+                btn.textContent = 'Creating...';
+
+                socket.emit('create_game', {
+                    player_name: name
+                });
+
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Create Game';
+                }, 2000);
+            } else {
+                alert('Please enter your name');
+                createNameInput.focus();
+            }
+        }
+
+        function joinGame() {
+            const name = joinNameInput.value.trim();
+            const gameId = gameIdInput.value.trim();
+            if (name && gameId) {
+                const btn = document.querySelectorAll('#lobby button.success')[1];
+                btn.disabled = true;
+                btn.textContent = 'Joining...';
+
+                socket.emit('join_game', {
+                    player_name: name,
+                    game_id: gameId
+                });
+
+                setTimeout(() => {
+                    btn.disabled = false;
+                    btn.textContent = 'Join Game';
+                }, 2000);
+            } else {
+                alert('Please enter your name and game ID');
+                if (!name) joinNameInput.focus();
+                else gameIdInput.focus();
+            }
+        }
+
+        function startGame() {
+            socket.emit('start_game');
+        }
+
+        function submitAttempt() {
+            const attempt = wordInput.value.trim().toUpperCase();
+
+            if (attempt.length !== wordLength) {
+                alert(`The word must be exactly ${wordLength} letters`);
+                wordInput.focus();
+                return;
+            }
+
+            if (!/^[A-Z]+$/.test(attempt)) {
+                alert('Only letters are allowed (no special characters)');
+                wordInput.focus();
+                return;
+            }
+
+            socket.emit('submit_attempt', {
+                attempt: attempt
+            }, (response) => {
+                if (response && response.error) {
+                    alert(response.error);
+                    wordInput.focus();
+                } else {
+                    wordInput.value = '';
+                    socket.emit('player_stopped_typing');
+                }
+            });
+        }
+
+        function leaveGame() {
+            if (confirm('Are you sure you want to leave the game?')) {
+                window.location.reload();
+            }
+        }
+
+        function showGameScreen() {
+            lobbySection.classList.add('hidden');
+            gameSection.classList.remove('hidden');
+            gameIdDisplay.textContent = currentGameId;
+
+            if (isCreator) {
+                startGameBtn.classList.remove('hidden');
+            }
+        }
+
+        function initializeBoard() {
+            boardElement.innerHTML = '';
+            boardElement.style.gridTemplateColumns = `repeat(${wordLength}, 1fr)`;
+
+            for (let row = 0; row < 6; row++) {
+                for (let col = 0; col < wordLength; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.id = `cell-${row}-${col}`;
+                    boardElement.appendChild(cell);
+                }
+            }
+        }
+
+        function updateGameState(data) {
+            wordLength = data.word_length;
+            updateWordLengthDisplay();
+
+            switch(data.status) {
+                case 'waiting':
+                    gameStatus.textContent = 'Status: Waiting for players...';
+                    gameStatus.className = 'status';
+                    break;
+                case 'playing':
+                    gameStatus.textContent = 'Status: Game in progress';
+                    gameStatus.className = 'status playing';
+                    break;
+                case 'finished':
+                    gameStatus.textContent = 'Status: Game finished';
+                    gameStatus.className = 'status finished';
+                    break;
+            }
+
+            playersList.innerHTML = '';
+
+            data.players.forEach(player => {
+                const playerElement = document.createElement('div');
+                playerElement.className = `player ${player.is_creator ? 'creator' : ''}`;
+                playerElement.id = `player-${player.id}`;
+
+                let playerHTML = `
+                    <div class="player-name">
+                        ${player.name} ${player.id === socket.id ? '(You)' : ''}
+                        ${player.is_creator ? '👑' : ''}
+                    </div>
+                    <div class="player-status">
+                        Attempts: ${player.attempts_count}/${data.max_attempts}
+                `;
+
+                if (player.has_won) {
+                    playerHTML += '<span class="player-winner"> ✓ Winner</span>';
+                }
+
+                playerHTML += `</div>`;
+                playerElement.innerHTML = playerHTML;
+                playersList.appendChild(playerElement);
+            });
+
+            const currentPlayer = data.players.find(p => p.id === socket.id);
+            if (currentPlayer) {
+                currentPlayer.attempts.forEach((attempt, rowIndex) => {
+                    for (let colIndex = 0; colIndex < wordLength; colIndex++) {
+                        const cell = document.getElementById(`cell-${rowIndex}-${colIndex}`);
+                        if (cell) {
+                            const evaluation = attempt.evaluation[colIndex];
+                            cell.textContent = evaluation[1];
+
+                            cell.className = 'cell';
+                            if (evaluation[0] === 'correct') {
+                                cell.classList.add('correct');
+                            } else if (evaluation[0] === 'present') {
+                                cell.classList.add('present');
+                            } else {
+                                cell.classList.add('absent');
+                            }
+                        }
+                    }
+                });
+            }
+
+            if (data.status === 'playing') {
+                inputArea.classList.remove('hidden');
+            } else {
+                inputArea.classList.add('hidden');
+            }
+
+            if (isCreator && data.status === 'waiting') {
+                startGameBtn.classList.remove('hidden');
+            } else {
+                startGameBtn.classList.add('hidden');
+            }
+        }
+
+        function updateWordLengthDisplay() {
+            wordLengthDisplay.textContent = wordLength;
+            wordInput.maxLength = wordLength;
+        }
+
+        wordInput.addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^a-zA-Z]/g, '').toUpperCase();
+
+            clearTimeout(typingTimeout);
+            socket.emit('player_typing');
+
+            typingTimeout = setTimeout(() => {
+                socket.emit('player_stopped_typing');
+            }, 1000);
+        });
+
+        wordInput.addEventListener('focus', () => {
+            socket.emit('player_typing');
+        });
+
+        wordInput.addEventListener('blur', () => {
+            socket.emit('player_stopped_typing');
+        });
+
+        wordInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                submitAttempt();
+            }
+        });
+
+        // Initialization
+        document.addEventListener('DOMContentLoaded', () => {
+            updateWordLengthDisplay();
+            createNameInput.focus();
+        });
+    </script>
+</body>
+</html>
